@@ -76,7 +76,7 @@ def get_ai_response(user_text):
         
         # ★ここを修正：モデルを自動検出せず、文字列で直接指定します
         # これにより "2.5-pro" などの使えないモデルが選ばれるのを防ぎます
-        target_model = 'gemini-1.5-flash'
+        target_model = 'models/gemini-1.5-flash'
         
         model = genai.GenerativeModel(target_model, system_instruction=system_prompt)
         
@@ -170,4 +170,5 @@ with tab2:
         )
     else:
         st.info("まだ質問履歴がありません。チャットタブで質問してみましょう！")
+
 
