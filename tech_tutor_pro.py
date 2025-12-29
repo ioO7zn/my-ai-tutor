@@ -1,9 +1,11 @@
+
 import streamlit as st
 import google.generativeai as genai
 import pandas as pd
 from datetime import datetime
+import re # 正規表現を使うためにインポート
 
-# --- 1. ページ設定とデザイン ---
+# --- 1. ページ設定とデザイン（徹底的に見やすく） ---
 st.set_page_config(
     page_title="Tech Tutor AI",
     page_icon="🎓",
@@ -11,59 +13,96 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# UIを洗練させるためのカスタムCSS（完全版）
+# 見やすさ特化のCSS
 st.markdown("""
 <style>
-    /* 全体のフォントと背景 */
+    /* アプリ全体の背景と文字色を強制指定 */
     .stApp {
-        background-color: #f8f9fa;
+        background-color: #f4f6f9; /* 薄いグレーの背景 */
+        color: #333333;
     }
-    
-    /* チャット吹き出しのデザイン */
-    .stChatMessage {
-        background-color: white !important;
-        color: #31333F !important;
-        border-radius: 15px;
-        padding: 15px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+
+    /* ----------------------------------
+       チャット吹き出しのスタイル
+    ---------------------------------- */
+    /* ユーザーとAIのメッセージ共通設定 */
+    div[data-testid="stChatMessage"] {
+        background-color: transparent !important;
+        padding: 0px !important;
+    }
+
+    /* メッセージの中身（カード部分） */
+    .chat-card {
+        padding: 20px;
+        border-radius: 12px;
         margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        line-height: 1.6; /* 行間を広げて読みやすく */
+        font-size: 16px; /* 文字サイズを少し大きく */
     }
 
-    /* 吹き出し内のすべてのテキスト要素を黒にする */
-    .stChatMessage p, .stChatMessage li, .stChatMessage div, .stChatMessage code {
-        color: #31333F !important;
+    /* ユーザーの吹き出し */
+    .user-card {
+        background-color: #ffffff;
+        border-left: 6px solid #2ecc71; /* 緑 */
+        color: #111111 !important;
     }
-    
-    /* 復習ノート（Expander）の中身も黒文字にする */
-    .streamlit-expanderContent p, .streamlit-expanderContent div, .streamlit-expanderContent li {
-        color: #31333F !important;
+
+    /* AIの吹き出し */
+    .ai-card {
+        background-color: #ffffff;
+        border-left: 6px solid #3498db; /* 青 */
+        color: #111111 !important;
     }
+
+    /* ----------------------------------
+       復習ノート（Expander）のスタイル
+    ---------------------------------- */
+    /* Expanderのヘッダー（クリックする部分） */
     .streamlit-expanderHeader {
-        color: #31333F !important;
-        background-color: white !important;
-        border-radius: 10px;
-    }
-
-    /* ユーザーのアイコンエリア */
-    .stChatMessage[data-testid="stChatMessage"]:nth-child(odd) {
-        border-left: 5px solid #4CAF50;
-    }
-    
-    /* AIのアイコンエリア */
-    .stChatMessage[data-testid="stChatMessage"]:nth-child(even) {
-        border-left: 5px solid #2196F3;
-        background-color: #f0f7ff !important;
-    }
-
-    /* ボタンのスタイル */
-    .stButton>button {
-        border-radius: 20px;
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border-radius: 8px !important;
         font-weight: bold;
         border: 1px solid #ddd;
     }
-    .stButton>button:hover {
-        border-color: #2196F3;
-        color: #2196F3;
+    
+    /* Expanderの中身 */
+    .streamlit-expanderContent {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border: 1px solid #ddd;
+        border-top: none;
+        padding: 20px !important;
+    }
+
+    /* コードブロックの調整 */
+    code {
+        color: #d63384 !important;
+        font-weight: bold;
+    }
+    .stCodeBlock {
+        background-color: #2b2b2b !important;
+    }
+
+    /* ボタンのデザイン */
+    .stButton button {
+        border-radius: 20px;
+        font-weight: bold;
+        background-color: #ffffff;
+        border: 1px solid #ccc;
+        color: #333;
+        transition: all 0.3s;
+    }
+    .stButton button:hover {
+        border-color: #3498db;
+        color: #3498db;
+        background-color: #f0f8ff;
+    }
+
+    /* 強制的に黒文字にするクラス（Markdown用） */
+    .black-text {
+        color: #000000 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -73,214 +112,207 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
     st.session_state.messages.append({
         "role": "assistant", 
-        "content": "こんにちは！今日はどの技術書について学びますか？サイドバーで設定してくださいね。"
+        "content": "こんにちは！一緒に勉強しましょう。\n何について知りたいですか？"
     })
 
 if "study_log" not in st.session_state:
     st.session_state.study_log = []
 
-# --- 3. サイドバー（設定エリア） ---
-with st.sidebar:
-    st.title("⚙️ 設定")
-    
-    # APIキー管理
-    if "GOOGLE_API_KEY" in st.secrets:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-        st.success("✅ API接続済み")
-    else:
-        api_key = st.text_input("Google API Key", type="password")
-        if not api_key:
-            st.warning("⚠️ APIキーを入力してください")
-    
-    st.markdown("---")
-    
-    # 学習コンテキスト
-    st.subheader("📚 学習テーマ")
-    book_context = st.text_input("本のタイトル / 技術名", placeholder="例：Python 1年生", value="Python基礎")
-    
-    st.subheader("📊 あなたのレベル")
-    user_level = st.select_slider(
-        "レベルを選択",
-        options=["超初心者", "初心者", "中級者", "上級者"],
-        value="初心者"
-    )
-    
-    st.markdown("---")
-
-    # 学習ゲージ（質問回数で増える）
-    q_count = len([m for m in st.session_state.messages if m["role"] == "user"])
-    progress = min(q_count / 10, 1.0) # 10回で満タン
-    st.write(f"🔥 今日の学習レベル: Lv.{q_count}")
-    st.progress(progress)
-    
-    st.markdown("---")
-    
-    # 履歴操作
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🗑️ 会話クリア", use_container_width=True):
-            st.session_state.messages = []
-            st.rerun()
-    with col2:
-        if st.button("🔄 全リセット", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.study_log = []
-            st.rerun()
-
-# --- 4. ロジック関数 ---
-def get_ai_response(user_text):
+# --- 3. ロジック関数（賢い分割表示機能付き） ---
+def get_ai_response(user_text, api_key, book_context, user_level):
     try:
         genai.configure(api_key=api_key)
         
+        # AIに「区切り文字」を使わせて、後でプログラムで分解できるようにする
         system_prompt = f"""
-        あなたは親切で優秀な技術メンターです。
-        ユーザーは『{book_context}』を学習中の『{user_level}』です。
+        あなたは『{book_context}』を教えるプロのメンターです。相手は『{user_level}』です。
         
-        【回答ルール】
-        1. 専門用語は必ず「日常の事物」に例えて解説する（比喩必須）。
-        2. 具体的なコード例がある場合は提示する。
-        3. 最後に「理解度チェック」として3択クイズを1問出す。
-        4. 回答の最後に、ユーザーが次に聞きそうな質問を3つ提案する（形式: [提案: 〇〇について教えて]）。
+        【重要：出力フォーマット】
+        以下の3つのセクションを「###」で区切って出力してください。
+        
+        セクション1: 解説
+        （ここに比喩を使った分かりやすい解説とコード例を書く）
+        
+        ###
+        
+        セクション2: クイズ問題
+        （ここに3択クイズの問題文だけを書く。答えは書かない）
+        
+        ###
+        
+        セクション3: クイズの答えと解説
+        （ここに正解と、なぜそうなるかの解説を書く）
+        
+        【ルール】
+        - 専門用語は必ず日常の例え話を入れる。
+        - 口調は優しく、絵文字を使う。
+        - 最後のセクション3は、ユーザーがクリックするまで見えないようにするため、必ず区切ること。
         """
         
         model = genai.GenerativeModel('models/gemini-flash-latest', system_instruction=system_prompt)
         
+        # 履歴の変換
         history_for_api = []
         for m in st.session_state.messages:
-            if m["role"] == "user":
-                history_for_api.append({"role": "user", "parts": [m["content"]]})
-            elif m["role"] == "assistant":
-                history_for_api.append({"role": "model", "parts": [m["content"]]})
+            role = "user" if m["role"] == "user" else "model"
+            # 過去のメッセージから区切り文字を除去して履歴に入れる（混乱防止）
+            clean_content = m["content"].replace("###", "\n") 
+            history_for_api.append({"role": role, "parts": [clean_content]})
 
         chat = model.start_chat(history=history_for_api)
-        return chat.send_message(user_text, stream=True)
+        response = chat.send_message(user_text)
+        return response.text
         
     except Exception as e:
         return f"エラー: {str(e)}"
 
+# メッセージを表示する関数（解説とクイズを分離する機能）
+def display_formatted_message(content, role):
+    if role == "user":
+        st.markdown(f'<div class="chat-card user-card">{content}</div>', unsafe_allow_html=True)
+    else:
+        # AIの回答の場合、###で区切られているかチェック
+        parts = content.split("###")
+        
+        # カード開始
+        st.markdown('<div class="chat-card ai-card">', unsafe_allow_html=True)
+        
+        # パート1: 解説
+        if len(parts) >= 1:
+            st.markdown(parts[0].strip())
+        
+        # パート2: クイズ問題（もしあれば）
+        if len(parts) >= 2:
+            st.divider()
+            st.markdown("##### 🧠 理解度クイズ")
+            st.markdown(parts[1].strip())
+            
+        # パート3: 答え（Expanderに隠す）
+        if len(parts) >= 3:
+            with st.expander("👀 答えと解説を見る"):
+                st.markdown(parts[2].strip())
+        
+        # カード終了
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# --- 4. サイドバー（設定） ---
+with st.sidebar:
+    st.title("⚙️ 設定")
+    
+    if "GOOGLE_API_KEY" in st.secrets:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    else:
+        api_key = st.text_input("Google API Key", type="password")
+        if not api_key:
+            st.warning("⚠️ APIキーを入れてください")
+    
+    st.markdown("---")
+    book_context = st.text_input("📚 学習テーマ", value="Python基礎")
+    user_level = st.select_slider("📊 レベル", options=["超初心者", "初心者", "中級者"], value="初心者")
+    
+    st.markdown("---")
+    # 学習ゲージ
+    q_count = len([m for m in st.session_state.messages if m["role"] == "user"])
+    st.write(f"🔥 経験値: Lv.{q_count}")
+    st.progress(min(q_count / 20, 1.0))
+
+    st.markdown("---")
+    if st.button("🗑️ 会話クリア", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.messages.append({"role": "assistant", "content": "リセットしました！何を学びますか？"})
+        st.rerun()
+
 # --- 5. メイン画面 ---
 st.title("🎓 Tech Tutor AI")
-st.caption(f"現在のモード: {book_context} | レベル: {user_level}")
 
-# タブ切り替え
-tab1, tab2 = st.tabs(["💬 メンターとチャット", "📝 復習単語帳"])
+# タブ表示
+tab1, tab2 = st.tabs(["💬 チャット", "📝 復習ノート"])
 
-# === タブ1：チャット画面 ===
+# === チャットタブ ===
 with tab1:
-    # メッセージ表示
-    for message in st.session_state.messages:
-        role = message["role"]
-        avatar = "🧑‍💻" if role == "user" else "🤖"
-        with st.chat_message(role, avatar=avatar):
-            st.markdown(message["content"])
+    # 履歴の表示
+    for msg in st.session_state.messages:
+        display_formatted_message(msg["content"], msg["role"])
 
-    # 次のアクション（AIからの提案ボタンなど）
-    # 直近がAIの回答だった場合、深掘りボタンを出す
-    suggested_question = None
+    st.markdown("<br>", unsafe_allow_html=True) # 余白
+
+    # AIからの提案（直近がAIの場合）
+    suggested_text = None
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-        st.markdown("###### 💡 次はこれを深掘りしてみる？")
+        st.info("💡 次はこんなことを聞いてみませんか？")
         col_s1, col_s2, col_s3 = st.columns(3)
-        if col_s1.button("詳しく解説して", use_container_width=True):
-            suggested_question = "今の説明を、もっと詳しく、別の例えで教えてください。"
-        if col_s2.button("応用例を見せて", use_container_width=True):
-            suggested_question = "その技術を使った、もっと実践的な応用コード例を見せてください。"
-        if col_s3.button("注意点は？", use_container_width=True):
-            suggested_question = "それを使うときに初心者がやりがちな失敗や注意点はありますか？"
+        if col_s1.button("もっと詳しく", key="btn_detail"):
+            suggested_text = "もう少し詳しく、別の例えで教えて"
+        if col_s2.button("コード例が見たい", key="btn_code"):
+            suggested_text = "実践的なコード例を書いて"
+        if col_s3.button("間違いやすい点は？", key="btn_warn"):
+            suggested_text = "初心者がやりがちなミスは？"
 
-    # 通常のクイックアクション
-    if not suggested_question:
-        st.markdown("###### 👇 質問のショートカット")
-        col_q1, col_q2, col_q3, col_q4 = st.columns(4)
-        if col_q1.button("これって何？", use_container_width=True):
-            suggested_question = f"{book_context}について、初心者向けに概要を教えて"
-        elif col_q2.button("コード例", use_container_width=True):
-            suggested_question = "具体的なコード例を書いて解説して"
-        elif col_q3.button("クイズ出して", use_container_width=True):
-            suggested_question = "今の内容について理解度クイズを出して"
-        elif col_q4.button("要約して", use_container_width=True):
-            suggested_question = "これまでの話を3行で要約して"
+    # 入力エリア（画面下部）
+    prompt = st.chat_input("質問を入力...")
 
-    # 入力エリア（一番下）
-    prompt = st.chat_input("質問を入力してください...")
-
-    # 処理ロジック（ボタンまたは手入力）
-    final_input = None
-    if prompt:
-        final_input = prompt
-    elif suggested_question:
-        final_input = suggested_question
+    # 入力決定ロジック
+    final_input = prompt if prompt else suggested_text
 
     if final_input:
         if not api_key:
-            st.error("⚠️ まずAPIキーを設定してください")
+            st.error("APIキーが必要です")
             st.stop()
 
-        # ユーザーの入力を表示
+        # ユーザー入力を保存・表示
         st.session_state.messages.append({"role": "user", "content": final_input})
-        with st.chat_message("user", avatar="🧑‍💻"):
-            st.markdown(final_input)
+        display_formatted_message(final_input, "user")
 
-        # AIの回答処理
-        with st.chat_message("assistant", avatar="🤖"):
-            response_container = st.empty()
-            full_response = ""
-            
-            response_stream = get_ai_response(final_input)
-            
-            if isinstance(response_stream, str):
-                if "429" in response_stream:
-                    st.error("⚠️ 使いすぎです。少し休憩しましょう☕")
-                else:
-                    st.error(response_stream)
-            else:
-                try:
-                    for chunk in response_stream:
-                        if chunk.text:
-                            full_response += chunk.text
-                            response_container.markdown(full_response + "▌")
-                    
-                    response_container.markdown(full_response)
-                    
-                    st.session_state.messages.append({"role": "assistant", "content": full_response})
-                    
-                    st.session_state.study_log.append({
-                        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "topic": book_context,
-                        "question": final_input,
-                        "answer": full_response
-                    })
-                    
-                    # 処理が終わったらリランしてボタンの状態をリセット
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"生成エラー: {e}")
-
-# === タブ2：復習ノート ===
-with tab2:
-    st.header("📝 復習単語帳")
-    st.markdown("クリックすると答えが開きます。")
-    
-    if st.session_state.study_log:
-        for i, log in enumerate(reversed(st.session_state.study_log)):
-            # Expanderを使ってカード形式にする
-            # スタイル適用のため、中身はMarkdownで書く
-            with st.expander(f"Q. {log['question']} ({log['date']})"):
-                st.markdown(f"**テーマ:** {log['topic']}")
-                st.markdown("---") # 区切り線
-                st.markdown(log['answer'])
+        # AI処理中...
+        with st.spinner("AIが考え中...✍️"):
+            response_text = get_ai_response(final_input, api_key, book_context, user_level)
         
-        st.divider()
+        # AI回答を保存・表示
+        st.session_state.messages.append({"role": "assistant", "content": response_text})
+        
+        # ログにも保存（クイズ形式に対応して保存）
+        # parts[0]=解説, parts[1]=問題, parts[2]=答え
+        parts = response_text.split("###")
+        question_part = final_input
+        answer_part = parts[0]
+        quiz_part = parts[1] if len(parts) > 1 else ""
+        quiz_ans_part = parts[2] if len(parts) > 2 else ""
+
+        st.session_state.study_log.append({
+            "timestamp": datetime.now().strftime("%m/%d %H:%M"),
+            "question": question_part,
+            "explanation": answer_part,
+            "quiz_q": quiz_part,
+            "quiz_a": quiz_ans_part
+        })
+        
+        st.rerun() # 画面を更新してきれいに表示
+
+# === 復習ノートタブ ===
+with tab2:
+    st.header("📝 復習カード")
+    st.caption("クリックすると詳細が開きます。")
+
+    if st.session_state.study_log:
+        for log in reversed(st.session_state.study_log):
+            # カードのタイトル（質問内容）
+            with st.expander(f"Q. {log['question']} ({log['timestamp']})"):
+                # 解説エリア
+                st.markdown("**【解説】**")
+                st.markdown(log['explanation'])
+                
+                # クイズがあった場合のみ表示
+                if log['quiz_q']:
+                    st.divider()
+                    st.markdown("**【クイズ】**")
+                    st.markdown(log['quiz_q'])
+                    # 答えはさらにネスト（入れ子）したExpanderに入れるか、詳細エリアの下部に配置
+                    st.info(f"**答え:** {log['quiz_a']}")
+    else:
+        st.info("まだ履歴がありません。")
+        
+    # CSVダウンロード
+    if st.session_state.study_log:
         df = pd.DataFrame(st.session_state.study_log)
         csv = df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            "📥 ノートをCSVで保存",
-            csv,
-            "my_study_notes.csv",
-            "text/csv",
-            key='download-csv'
-        )
-    else:
-        st.info("まだ履歴がありません。チャットタブで質問するとここに保存されます。")
-
-
+        st.download_button("📥 ログを保存", csv, "study_log.csv", "text/csv")
