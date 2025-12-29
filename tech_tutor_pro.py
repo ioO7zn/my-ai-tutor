@@ -10,55 +10,97 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. デザイン完全固定（どんな環境でも崩れないCSS） ---
+# --- 2. デザイン完全固定（強制ライトモード） ---
 st.markdown("""
 <style>
-    /* アプリ全体の背景（薄いグレーで統一） */
+    /* ========================================
+       【強制ライトモード化 CSS】
+       ダークモード設定を無視して全て白くします
+       ========================================
+    */
+
+    /* アプリ全体の背景とメインエリア */
     .stApp {
-        background-color: #f0f2f6;
+        background-color: #f8f9fa !important; /* 薄いグレー */
+    }
+    
+    /* サイドバーの背景 */
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff !important; /* 真っ白 */
+        border-right: 1px solid #e0e0e0;
     }
 
-    /* === チャットメッセージ（重要） === */
-    /* どんな環境でも「白背景・黒文字」または「薄青背景・黒文字」にする */
+    /* 全ての文字色を黒に固定 */
+    /* タイトル(h1)、見出し、本文、リスト、ラベルなど全て */
+    h1, h2, h3, h4, h5, h6, p, div, span, label, li {
+        color: #1f1f1f !important;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    /* === チャットエリアのデザイン === */
     
-    /* 1. ユーザーのメッセージ（白） */
+    /* ユーザーの吹き出し（白） */
     div[data-testid="stChatMessage"]:nth-child(odd) {
         background-color: #ffffff !important;
         border: 1px solid #e0e0e0;
-        border-radius: 10px;
-        padding: 15px;
-        color: #1f1f1f !important; /* 文字色は濃いグレー */
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
 
-    /* 2. AIのメッセージ（薄い青） */
+    /* AIの吹き出し（薄い青） */
     div[data-testid="stChatMessage"]:nth-child(even) {
         background-color: #f0f7ff !important;
         border: 1px solid #d0e3ff;
-        border-radius: 10px;
-        padding: 15px;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    
+    /* 吹き出し内のテキストを黒に */
+    div[data-testid="stChatMessage"] * {
         color: #1f1f1f !important;
     }
 
-    /* 3. メッセージ内の全てのテキスト要素を強制的に黒にする */
-    /* これがないとダークモード時に文字が白くなり見えなくなる */
-    div[data-testid="stChatMessage"] p, 
-    div[data-testid="stChatMessage"] div, 
-    div[data-testid="stChatMessage"] h1, 
-    div[data-testid="stChatMessage"] h2, 
-    div[data-testid="stChatMessage"] h3, 
-    div[data-testid="stChatMessage"] li {
-        color: #1f1f1f !important;
-    }
-
-    /* === ボタンのデザイン === */
-    /* デフォルトの塗りつぶしをやめて、見やすい枠線ボタンスタイルにする */
-    .stButton > button {
+    /* === 復習ノート（Expander）のデザイン === */
+    
+    /* 閉じてる時のバー（タイトル部分） */
+    .streamlit-expanderHeader {
         background-color: #ffffff !important;
         color: #1f1f1f !important;
         border: 1px solid #ccc !important;
+        border-radius: 8px !important;
+        font-weight: bold;
+    }
+    /* 閉じてる時のバー（ホバー時） */
+    .streamlit-expanderHeader:hover {
+        background-color: #f0f8ff !important;
+        color: #2196F3 !important;
+    }
+
+    /* 開いた時の中身 */
+    .streamlit-expanderContent {
+        background-color: #ffffff !important;
+        border: 1px solid #ccc;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        color: #1f1f1f !important;
+    }
+    
+    /* Expanderの中の文字 */
+    .streamlit-expanderContent p, .streamlit-expanderContent div {
+        color: #1f1f1f !important;
+    }
+
+    /* === その他パーツ === */
+    
+    /* ボタンのデザイン */
+    .stButton > button {
+        background-color: #ffffff !important;
+        color: #1f1f1f !important;
+        border: 1px solid #bbb !important;
         border-radius: 20px !important;
         font-weight: bold !important;
-        transition: all 0.3s ease;
     }
     .stButton > button:hover {
         border-color: #2196F3 !important;
@@ -66,28 +108,22 @@ st.markdown("""
         background-color: #e3f2fd !important;
     }
 
-    /* === アコーディオン（正解を見る部分） === */
-    .streamlit-expanderHeader {
-        background-color: #ffffff !important;
-        color: #1f1f1f !important;
-        border: 1px solid #ddd !important;
-        border-radius: 5px;
+    /* コードブロック（ここだけは見やすいように少し暗くてもOKだが、文字は明るく） */
+    code {
+        color: #d63384 !important;
+        background-color: #f0f0f0 !important; /* 背景も明るく */
+        font-weight: bold;
     }
-    .streamlit-expanderContent {
-        background-color: #fafafa !important;
-        border: 1px solid #ddd;
-        border-top: none;
+    
+    /* タブの文字色 */
+    button[data-baseweb="tab"] div {
         color: #1f1f1f !important;
     }
-    .streamlit-expanderContent p {
-        color: #1f1f1f !important;
+    /* 選択中のタブ */
+    button[aria-selected="true"] div {
+        color: #2196F3 !important;
     }
 
-    /* コードブロックの調整 */
-    code {
-        color: #d63384 !important; /* ピンク系で見やすく */
-        font-family: monospace;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -151,7 +187,6 @@ with st.sidebar:
     user_level = st.select_slider("📊 現在のレベル", options=["入門", "初級", "中級"], value="初級")
     
     st.divider()
-    # 経験値バー
     q_count = sum(1 for m in st.session_state.messages if m["role"] == "user")
     st.write(f"🔥 今日の質問数: {q_count}問")
     st.progress(min(q_count / 10, 1.0))
@@ -204,7 +239,6 @@ with tab1:
     # 入力処理
     user_input = st.chat_input("ここに入力...")
     
-    # ボタン入力があればそれを優先
     if "next_input" in st.session_state:
         user_input = st.session_state.pop("next_input")
 
@@ -213,7 +247,6 @@ with tab1:
             st.error("サイドバーでAPIキーを設定してください")
             st.stop()
             
-        # ユーザー入力を表示
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.rerun()
 
@@ -225,14 +258,13 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 last_msg = st.session_state.messages[-1]["content"]
                 response_text = get_ai_response(last_msg, api_key, book_context, user_level)
                 
-                # 表示
+                # 表示と保存
                 if "///HIDDEN///" in response_text:
                     parts = response_text.split("///HIDDEN///")
                     st.markdown(parts[0])
                     with st.expander("👀 クリックして正解を見る"):
                         st.markdown(parts[1])
                     
-                    # ログ保存用
                     log_q = last_msg
                     log_a = parts[0]
                     log_ans = parts[1]
@@ -242,10 +274,8 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     log_a = response_text
                     log_ans = "（解説のみ）"
 
-                # 履歴保存
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 
-                # 復習ログ保存
                 st.session_state.study_log.append({
                     "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "q": log_q,
@@ -261,17 +291,20 @@ with tab2:
     
     if st.session_state.study_log:
         for log in reversed(st.session_state.study_log):
+            # Expander自体もCSSで白く強制されています
             with st.expander(f"Q. {log['q']}"):
                 st.caption(f"日時: {log['time']}")
+                
+                # 文字色もCSSで黒に強制されています
                 st.markdown("**【解説・問題】**")
                 st.markdown(log['a'])
+                
                 if log['ans'] != "（解説のみ）":
                     st.divider()
                     st.markdown("**【正解】**")
                     st.markdown(log['ans'])
         
         st.divider()
-        # CSVダウンロード
         df = pd.DataFrame(st.session_state.study_log)
         csv = df.to_csv(index=False).encode('utf-8-sig')
         st.download_button("📥 復習データをCSVで保存", csv, "study_log.csv", "text/csv")
