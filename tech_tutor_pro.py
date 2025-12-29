@@ -75,7 +75,7 @@ def get_ai_response(user_text):
         5. 回答の最後に、理解を深めるための「ミニクイズ」を1問出す。
         """
         
-        model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_prompt)
+        model = genai.GenerativeModel('gemini-pro', system_instruction=system_prompt)
         
         # 会話履歴を含めて送信（文脈維持のため）
         chat = model.start_chat(history=[
@@ -159,4 +159,5 @@ with tab2:
     else:
 
         st.info("まだ質問履歴がありません。チャットタブで質問してみましょう！")
+
 
