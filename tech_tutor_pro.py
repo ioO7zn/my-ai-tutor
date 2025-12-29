@@ -54,7 +54,7 @@ with st.sidebar:
     # 履歴クリアボタン
     if st.button("🗑️ 会話履歴をクリア"):
         st.session_state.messages = []
-        st.experimental_rerun()
+        st.rerun()
 
 # --- 4. メインロジック関数 ---
 def get_ai_response(user_text):
@@ -159,3 +159,4 @@ with tab2:
     else:
 
         st.info("まだ質問履歴がありません。チャットタブで質問してみましょう！")
+
