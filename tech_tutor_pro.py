@@ -31,8 +31,11 @@ if "study_log" not in st.session_state:
 with st.sidebar:
     st.header("⚙️ 学習環境設定")
     
-    # APIキー入力（パスワード形式）
-    api_key = st.text_input("Google API Key", type="password", help="Google AI Studioで取得したキー")
+    # Secretsにキーがあればそれを使い、なければ入力欄を出す
+    if "GOOGLE_API_KEY" in st.secrets:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    else:
+        api_key = st.sidebar.text_input("Google API Key", type="password")
     
     st.divider()
     
@@ -154,4 +157,5 @@ with tab2:
             mime='text/csv',
         )
     else:
+
         st.info("まだ質問履歴がありません。チャットタブで質問してみましょう！")
