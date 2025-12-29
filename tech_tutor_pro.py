@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# UIを洗練させるためのカスタムCSS
+# UIを洗練させるためのカスタムCSS（修正版）
 st.markdown("""
 <style>
     /* 全体のフォントと背景 */
@@ -21,30 +21,30 @@ st.markdown("""
     
     /* チャット吹き出しのデザイン */
     .stChatMessage {
-        background-color: white;
+        background-color: white !important; /* 強制的に白背景 */
+        color: #31333F !important;      /* ★ここが修正点：文字を強制的に黒にする */
         border-radius: 15px;
         padding: 15px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         margin-bottom: 10px;
     }
+
+    /* 吹き出し内のすべてのテキスト要素を黒にする */
+    .stChatMessage p, .stChatMessage li, .stChatMessage div {
+        color: #31333F !important;
+    }
     
     /* ユーザーのアイコンエリア */
     .stChatMessage[data-testid="stChatMessage"]:nth-child(odd) {
-        border-left: 5px solid #4CAF50; /* 緑のアクセント */
+        border-left: 5px solid #4CAF50;
     }
     
     /* AIのアイコンエリア */
     .stChatMessage[data-testid="stChatMessage"]:nth-child(even) {
-        border-left: 5px solid #2196F3; /* 青のアクセント */
-        background-color: #f0f7ff;
+        border-left: 5px solid #2196F3;
+        background-color: #f0f7ff !important; /* AIは薄い青背景 */
     }
 
-    /* ヘッダーの装飾 */
-    h1 {
-        color: #2c3e50;
-        font-family: 'Helvetica Neue', sans-serif;
-    }
-    
     /* ボタンのスタイル */
     .stButton>button {
         border-radius: 20px;
@@ -56,7 +56,6 @@ st.markdown("""
 # --- 2. セッション情報の初期化 ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    # 最初の挨拶を入れる
     st.session_state.messages.append({
         "role": "assistant", 
         "content": "こんにちは！今日はどの技術書について学びますか？サイドバーで設定してくださいね。"
@@ -129,7 +128,7 @@ def get_ai_response(user_text):
         for m in st.session_state.messages:
             if m["role"] == "user":
                 history_for_api.append({"role": "user", "parts": [m["content"]]})
-            elif m["role"] == "assistant": # StreamlitではassistantだがAPIではmodel
+            elif m["role"] == "assistant":
                 history_for_api.append({"role": "model", "parts": [m["content"]]})
 
         chat = model.start_chat(history=history_for_api)
@@ -150,12 +149,11 @@ with tab1:
     # メッセージ表示
     for message in st.session_state.messages:
         role = message["role"]
-        # アイコンの切り替え
         avatar = "🧑‍💻" if role == "user" else "🤖"
         with st.chat_message(role, avatar=avatar):
             st.markdown(message["content"])
 
-    # クイックアクション（入力補助）
+    # クイックアクション
     st.markdown("###### 👇 何を聞きますか？")
     col_q1, col_q2, col_q3, col_q4 = st.columns(4)
     if col_q1.button("これって何？", use_container_width=True):
@@ -171,7 +169,6 @@ with tab1:
 
     # 入力エリア
     if prompt := st.chat_input("質問を入力してください...") or input_text:
-        # prompt変数に値が入る（手入力 or ボタン）
         real_prompt = input_text if input_text else prompt
 
         if not api_key:
@@ -190,7 +187,6 @@ with tab1:
             
             response_stream = get_ai_response(real_prompt)
             
-            # エラー処理
             if isinstance(response_stream, str):
                 if "429" in response_stream:
                     st.error("⚠️ 使いすぎです。少し休憩しましょう☕")
@@ -205,10 +201,8 @@ with tab1:
                     
                     response_container.markdown(full_response)
                     
-                    # 履歴に保存
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
                     
-                    # 復習ログに保存（質問と回答のペア）
                     st.session_state.study_log.append({
                         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
                         "topic": book_context,
@@ -225,16 +219,13 @@ with tab2:
     st.markdown("チャットした内容が自動でカード化されます。クリックして答え合わせしましょう！")
     
     if st.session_state.study_log:
-        # ログを新しい順に表示
         for i, log in enumerate(reversed(st.session_state.study_log)):
-            # Expanderを使ってカード形式にする
             with st.expander(f"Q. {log['question']} ({log['date']})"):
                 st.markdown(f"**テーマ:** {log['topic']}")
                 st.divider()
                 st.markdown(log['answer'])
         
         st.divider()
-        # CSVダウンロード機能
         df = pd.DataFrame(st.session_state.study_log)
         csv = df.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
