@@ -18,42 +18,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. 自動で有効なモデルを探す関数（これ重要！） ---
-def configure_and_get_model(api_key):
-    """APIキーを使って、現在利用可能な最適なモデル名を自動取得する"""
-    try:
-        genai.configure(api_key=api_key)
-        
-        # 利用可能なモデル一覧を取得
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        # 優先順位: 1.5-flash -> 1.5-pro -> 1.0-pro
-        # "models/" がついている場合とついていない場合の両方を考慮して探す
-        for model_name in available_models:
-            if "gemini-1.5-flash" in model_name:
-                return model_name
-        for model_name in available_models:
-            if "gemini-1.5-pro" in model_name:
-                return model_name
-        for model_name in available_models:
-            if "gemini-pro" in model_name:
-                return model_name
-                
-        # 見つからない場合はデフォルト（イチかバチか）
-        return "gemini-1.5-flash"
-    except Exception:
-        return None
-
-# --- 3. セッション情報の初期化 ---
+# --- 2. セッション情報の初期化 ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "study_log" not in st.session_state:
     st.session_state.study_log = []
 
-# --- 4. サイドバー（設定エリア） ---
+# --- 3. サイドバー（設定エリア） ---
 with st.sidebar:
     st.header("⚙️ 学習環境設定")
     
@@ -64,17 +35,6 @@ with st.sidebar:
     else:
         api_key = st.sidebar.text_input("Google API Key", type="password")
     
-    # ここでモデルを自動決定する
-    if api_key:
-        active_model_name = configure_and_get_model(api_key)
-        if active_model_name:
-            st.caption(f"🚀 使用モデル: {active_model_name}")
-        else:
-            st.error("⚠️ 有効なモデルが見つかりません。")
-            active_model_name = "gemini-pro" # フォールバック
-    else:
-        active_model_name = None
-
     st.divider()
     
     # コンテキスト設定
@@ -93,10 +53,13 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- 5. メインロジック関数 ---
-def get_ai_response(user_text, model_name):
+# --- 4. メインロジック関数 ---
+def get_ai_response(user_text):
     """Gemini APIを呼び出して回答を生成する関数"""
     try:
+        # APIキーの設定
+        genai.configure(api_key=api_key)
+        
         # システムプロンプト
         system_prompt = f"""
         あなたはプロフェッショナルな技術教育者です。
@@ -111,8 +74,11 @@ def get_ai_response(user_text, model_name):
         5. 回答の最後に、理解を深めるための「ミニクイズ」を1問出す。
         """
         
-        # 決定されたモデル名を使う
-        model = genai.GenerativeModel(model_name, system_instruction=system_prompt)
+        # ★ここを修正：モデルを自動検出せず、文字列で直接指定します
+        # これにより "2.5-pro" などの使えないモデルが選ばれるのを防ぎます
+        target_model = 'gemini-1.5-flash'
+        
+        model = genai.GenerativeModel(target_model, system_instruction=system_prompt)
         
         chat = model.start_chat(history=[
             {"role": m["role"], "parts": [m["content"]]} 
@@ -120,10 +86,12 @@ def get_ai_response(user_text, model_name):
         ])
         
         return chat.send_message(user_text, stream=True)
+        
     except Exception as e:
+        # エラー内容を文字列として返す
         return f"エラーが発生しました: {str(e)}"
 
-# --- 6. アプリケーション画面構成 ---
+# --- 5. アプリケーション画面構成 ---
 st.title("🎓 Tech Tutor AI")
 st.caption(f"Context: {book_context if book_context else '未設定'} | Level: {user_level}")
 
@@ -142,10 +110,6 @@ with tab1:
             st.error("サイドバーでAPIキーを設定してください。")
             st.stop()
         
-        if not active_model_name:
-            st.error("モデルの設定に失敗しました。")
-            st.stop()
-
         # ユーザーのメッセージを表示・保存
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -156,11 +120,20 @@ with tab1:
             response_container = st.empty()
             full_response = ""
             
-            # 自動検出したモデル名を渡して実行
-            response_stream = get_ai_response(prompt, active_model_name)
+            # 回答生成
+            response_stream = get_ai_response(prompt)
             
+            # エラー判定（文字列が返ってきたらエラーとみなす）
             if isinstance(response_stream, str):
-                response_container.error(response_stream)
+                # 404エラーなどの場合、ユーザーに見やすいメッセージを出す
+                if "404" in response_stream:
+                    st.error("⚠️ モデルが見つかりません。requirements.txt の google-generativeai のバージョンを確認してください。")
+                    st.code(response_stream)
+                elif "429" in response_stream:
+                    st.error("⚠️ 使いすぎて制限がかかりました。数分待ってから試してください。")
+                    st.code(response_stream)
+                else:
+                    st.error(response_stream)
             else:
                 try:
                     for chunk in response_stream:
@@ -175,7 +148,7 @@ with tab1:
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
                         "question": prompt,
                         "context": book_context,
-                        "model": active_model_name
+                        "model": "gemini-1.5-flash"
                     })
                 except Exception as e:
                     response_container.error(f"生成中にエラーが発生しました: {e}")
