@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# カスタムCSSで見た目を少し整える
+# カスタムCSS
 st.markdown("""
 <style>
     .stChatMessage {border-radius: 10px; padding: 10px;}
@@ -18,30 +18,68 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. セッション情報の初期化 ---
-# チャット履歴の保存場所
+# --- 2. 自動で有効なモデルを探す関数（これ重要！） ---
+def configure_and_get_model(api_key):
+    """APIキーを使って、現在利用可能な最適なモデル名を自動取得する"""
+    try:
+        genai.configure(api_key=api_key)
+        
+        # 利用可能なモデル一覧を取得
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # 優先順位: 1.5-flash -> 1.5-pro -> 1.0-pro
+        # "models/" がついている場合とついていない場合の両方を考慮して探す
+        for model_name in available_models:
+            if "gemini-1.5-flash" in model_name:
+                return model_name
+        for model_name in available_models:
+            if "gemini-1.5-pro" in model_name:
+                return model_name
+        for model_name in available_models:
+            if "gemini-pro" in model_name:
+                return model_name
+                
+        # 見つからない場合はデフォルト（イチかバチか）
+        return "gemini-1.5-flash"
+    except Exception:
+        return None
+
+# --- 3. セッション情報の初期化 ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# 学習ログ（復習用）の保存場所
 if "study_log" not in st.session_state:
     st.session_state.study_log = []
 
-# --- 3. サイドバー（設定エリア） ---
+# --- 4. サイドバー（設定エリア） ---
 with st.sidebar:
     st.header("⚙️ 学習環境設定")
     
-    # Secretsにキーがあればそれを使い、なければ入力欄を出す
+    # Secretsまたは入力からキーを取得
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
+        st.success("✅ APIキー読込完了")
     else:
         api_key = st.sidebar.text_input("Google API Key", type="password")
     
+    # ここでモデルを自動決定する
+    if api_key:
+        active_model_name = configure_and_get_model(api_key)
+        if active_model_name:
+            st.caption(f"🚀 使用モデル: {active_model_name}")
+        else:
+            st.error("⚠️ 有効なモデルが見つかりません。")
+            active_model_name = "gemini-pro" # フォールバック
+    else:
+        active_model_name = None
+
     st.divider()
     
     # コンテキスト設定
     st.subheader("📚 今の学習テーマ")
-    book_context = st.text_input("読んでいる本の名前・技術", placeholder="例：React入門、ゼロから作るDeep Learning")
+    book_context = st.text_input("読んでいる本の名前・技術", placeholder="例：React入門")
     
     user_level = st.select_slider(
         "あなたの理解度レベル",
@@ -51,17 +89,15 @@ with st.sidebar:
     
     st.divider()
     
-    # 履歴クリアボタン
     if st.button("🗑️ 会話履歴をクリア"):
         st.session_state.messages = []
         st.rerun()
 
-# --- 4. メインロジック関数 ---
-def get_ai_response(user_text):
+# --- 5. メインロジック関数 ---
+def get_ai_response(user_text, model_name):
     """Gemini APIを呼び出して回答を生成する関数"""
     try:
-        genai.configure(api_key=api_key)
-        # 思考の連鎖や役割定義を行うシステムプロンプト
+        # システムプロンプト
         system_prompt = f"""
         あなたはプロフェッショナルな技術教育者です。
         現在、ユーザーは『{book_context}』について学習しています。
@@ -75,20 +111,19 @@ def get_ai_response(user_text):
         5. 回答の最後に、理解を深めるための「ミニクイズ」を1問出す。
         """
         
-        model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_prompt)
+        # 決定されたモデル名を使う
+        model = genai.GenerativeModel(model_name, system_instruction=system_prompt)
         
-        # 会話履歴を含めて送信（文脈維持のため）
         chat = model.start_chat(history=[
             {"role": m["role"], "parts": [m["content"]]} 
             for m in st.session_state.messages if m["role"] != "system"
         ])
         
-        response = chat.send_message(user_text, stream=True)
-        return response
+        return chat.send_message(user_text, stream=True)
     except Exception as e:
-        return f"エラーが発生しました: {e}"
+        return f"エラーが発生しました: {str(e)}"
 
-# --- 5. アプリケーション画面構成 ---
+# --- 6. アプリケーション画面構成 ---
 st.title("🎓 Tech Tutor AI")
 st.caption(f"Context: {book_context if book_context else '未設定'} | Level: {user_level}")
 
@@ -106,6 +141,10 @@ with tab1:
         if not api_key:
             st.error("サイドバーでAPIキーを設定してください。")
             st.stop()
+        
+        if not active_model_name:
+            st.error("モデルの設定に失敗しました。")
+            st.stop()
 
         # ユーザーのメッセージを表示・保存
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -117,28 +156,29 @@ with tab1:
             response_container = st.empty()
             full_response = ""
             
-            # ストリーミング表示（文字がカタカタ出る演出）
-            response_stream = get_ai_response(prompt)
+            # 自動検出したモデル名を渡して実行
+            response_stream = get_ai_response(prompt, active_model_name)
             
-            # エラー文字列が返ってきた場合の処理
             if isinstance(response_stream, str):
                 response_container.error(response_stream)
             else:
-                for chunk in response_stream:
-                    if chunk.text:
-                        full_response += chunk.text
-                        response_container.markdown(full_response + "▌")
-                response_container.markdown(full_response)
-                
-                # メッセージ履歴に追加
-                st.session_state.messages.append({"role": "model", "content": full_response})
-                
-                # 復習ログに追加（質問と回答の要約などを保存する想定）
-                st.session_state.study_log.append({
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "question": prompt,
-                    "context": book_context
-                })
+                try:
+                    for chunk in response_stream:
+                        if chunk.text:
+                            full_response += chunk.text
+                            response_container.markdown(full_response + "▌")
+                    response_container.markdown(full_response)
+                    
+                    st.session_state.messages.append({"role": "model", "content": full_response})
+                    
+                    st.session_state.study_log.append({
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "question": prompt,
+                        "context": book_context,
+                        "model": active_model_name
+                    })
+                except Exception as e:
+                    response_container.error(f"生成中にエラーが発生しました: {e}")
 
 with tab2:
     st.header("📝 復習ノート")
@@ -148,7 +188,6 @@ with tab2:
         df = pd.DataFrame(st.session_state.study_log)
         st.dataframe(df, use_container_width=True)
         
-        # CSVダウンロードボタン
         csv = df.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
             label="📥 学習ログをCSVでダウンロード",
@@ -157,8 +196,5 @@ with tab2:
             mime='text/csv',
         )
     else:
-
         st.info("まだ質問履歴がありません。チャットタブで質問してみましょう！")
-
-
 
