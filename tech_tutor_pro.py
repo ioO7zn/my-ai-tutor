@@ -191,7 +191,7 @@ with st.sidebar:
     q_count = sum(1 for m in st.session_state.messages if m["role"] == "user")
     st.write(f"🔥 今日の質問数: {q_count}問")
     st.progress(min(q_count / 10, 1.0))
-    st.caption("Using Model: Gemma 2 (27B)")
+    st.caption("Using Model: Gemma 3 (27B)")
     
     st.divider()
     if st.button("🗑️ 最初からやり直す", use_container_width=True):
@@ -312,3 +312,4 @@ with tab2:
         st.download_button("📥 復習データをCSVで保存", csv, "study_log.csv", "text/csv")
     else:
         st.write("まだ履歴がありません。")
+
