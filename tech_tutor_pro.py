@@ -155,7 +155,7 @@ def get_ai_response(user_text, api_key, context, level):
         優しく、励ますように。絵文字を使う。
         """
         
-        model = genai.GenerativeModel('models/gemini-flash-latest', system_instruction=system_prompt)
+        model = genai.GenerativeModel('models/gemma-3-27b-it', system_instruction=system_prompt)
         
         # 履歴整形
         history_api = []
@@ -310,3 +310,4 @@ with tab2:
         st.download_button("📥 復習データをCSVで保存", csv, "study_log.csv", "text/csv")
     else:
         st.write("まだ履歴がありません。")
+
