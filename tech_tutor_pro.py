@@ -10,167 +10,111 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. デザイン完全固定（強制ライトモード） ---
+# --- 2. デザイン（ホワイトモード完全固定） ---
 st.markdown("""
 <style>
-    /* ========================================
-       【強制ライトモード化 CSS】
-       ダークモード設定を無視して全て白くします
-       ========================================
-    */
-
-    /* アプリ全体の背景とメインエリア */
-    .stApp {
-        background-color: #f8f9fa !important; /* 薄いグレー */
-    }
+    .stApp { background-color: #f8f9fa !important; }
+    section[data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #e0e0e0; }
+    h1, h2, h3, h4, h5, h6, p, div, span, label, li { color: #1f1f1f !important; }
     
-    /* サイドバーの背景 */
-    section[data-testid="stSidebar"] {
-        background-color: #ffffff !important; /* 真っ白 */
-        border-right: 1px solid #e0e0e0;
-    }
-
-    /* 全ての文字色を黒に固定 */
-    /* タイトル(h1)、見出し、本文、リスト、ラベルなど全て */
-    h1, h2, h3, h4, h5, h6, p, div, span, label, li {
-        color: #1f1f1f !important;
-        font-family: 'Helvetica Neue', Arial, sans-serif;
-    }
-
-    /* === チャットエリアのデザイン === */
-    
-    /* ユーザーの吹き出し（白） */
+    /* チャットエリア */
     div[data-testid="stChatMessage"]:nth-child(odd) {
         background-color: #ffffff !important;
         border: 1px solid #e0e0e0;
         border-radius: 12px;
         padding: 20px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
-
-    /* AIの吹き出し（薄い青） */
     div[data-testid="stChatMessage"]:nth-child(even) {
         background-color: #f0f7ff !important;
         border: 1px solid #d0e3ff;
         border-radius: 12px;
         padding: 20px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
-    
-    /* 吹き出し内のテキストを黒に */
-    div[data-testid="stChatMessage"] * {
-        color: #1f1f1f !important;
-    }
+    div[data-testid="stChatMessage"] * { color: #1f1f1f !important; }
 
-    /* === 復習ノート（Expander）のデザイン === */
-    
-    /* 閉じてる時のバー（タイトル部分） */
+    /* 復習ノート */
     .streamlit-expanderHeader {
         background-color: #ffffff !important;
         color: #1f1f1f !important;
         border: 1px solid #ccc !important;
         border-radius: 8px !important;
-        font-weight: bold;
     }
-    /* 閉じてる時のバー（ホバー時） */
-    .streamlit-expanderHeader:hover {
-        background-color: #f0f8ff !important;
-        color: #2196F3 !important;
-    }
-
-    /* 開いた時の中身 */
     .streamlit-expanderContent {
         background-color: #ffffff !important;
         border: 1px solid #ccc;
         border-top: none;
-        border-radius: 0 0 8px 8px;
         color: #1f1f1f !important;
     }
     
-    /* Expanderの中の文字 */
-    .streamlit-expanderContent p, .streamlit-expanderContent div {
-        color: #1f1f1f !important;
-    }
-
-    /* === その他パーツ === */
-    
-    /* ボタンのデザイン */
+    /* ボタン */
     .stButton > button {
         background-color: #ffffff !important;
         color: #1f1f1f !important;
         border: 1px solid #bbb !important;
-        border-radius: 20px !important;
         font-weight: bold !important;
+        border-radius: 20px !important;
     }
     .stButton > button:hover {
         border-color: #2196F3 !important;
         color: #2196F3 !important;
         background-color: #e3f2fd !important;
     }
-
-    /* コードブロック（ここだけは見やすいように少し暗くてもOKだが、文字は明るく） */
-    code {
-        color: #d63384 !important;
-        background-color: #f0f0f0 !important; /* 背景も明るく */
-        font-weight: bold;
-    }
-    
-    /* タブの文字色 */
-    button[data-baseweb="tab"] div {
-        color: #1f1f1f !important;
-    }
-    /* 選択中のタブ */
-    button[aria-selected="true"] div {
-        color: #2196F3 !important;
-    }
-
+    code { color: #d63384 !important; background-color: #f0f0f0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # --- 3. セッション管理 ---
 if "messages" not in st.session_state:
-    st.session_state.messages = []
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": "こんにちは！学習をサポートします。何について勉強しますか？"
-    })
+    st.session_state.messages = [{"role": "assistant", "content": "こんにちは！モデルを選んで学習を始めましょう。"}]
 
 if "study_log" not in st.session_state:
     st.session_state.study_log = []
 
-# --- 4. AIロジック ---
-def get_ai_response(user_text, api_key, context, level):
+# --- 4. AIロジック (Gemmaのエラー回避対応版) ---
+def get_ai_response(user_text, api_key, context, level, model_name):
     try:
         genai.configure(api_key=api_key)
         
-        system_prompt = f"""
+        # システムプロンプト（AIへの命令文）
+        system_prompt_text = f"""
         あなたは『{context}』のプロ講師です。生徒レベルは『{level}』。
         
         【構成ルール】
         1. まず、比喩を使って分かりやすく解説する。
         2. 解説の直後に、「理解度チェッククイズ」の問題文だけを出す。
         3. 最後に、区切り文字 `///HIDDEN///` を入れ、その後に正解と解説を書く。
-        
-        【口調】
-        優しく、励ますように。絵文字を使う。
         """
         
-        model = genai.GenerativeModel('models/gemma-3-27b-it', system_instruction=system_prompt)
-        
-        # 履歴整形
+        # 履歴の準備
         history_api = []
         for m in st.session_state.messages:
             role = "user" if m["role"] == "user" else "model"
-            # 隠し文字を除去して履歴に入れる
             clean_text = m["content"].replace("///HIDDEN///", "\n\n【正解】\n")
             history_api.append({"role": role, "parts": [clean_text]})
+
+        # ★ここが重要：モデルによって設定方法を変える
+        if "gemma" in model_name.lower():
+            # Gemmaの場合: system_instructionが使えないので、無理やり会話の最初に混ぜる
+            model = genai.GenerativeModel(model_name)
+            
+            # 履歴がある場合は、最初のメッセージに命令を混ぜる
+            if history_api:
+                # 最初のメッセージの先頭に命令を追加
+                first_msg = history_api[0]['parts'][0]
+                history_api[0]['parts'][0] = system_prompt_text + "\n\n" + first_msg
+            else:
+                # 履歴がない場合（初回）は、ユーザー入力に混ぜる
+                user_text = system_prompt_text + "\n\n" + user_text
+        else:
+            # Geminiの場合: 正規の機能を使う
+            model = genai.GenerativeModel(model_name, system_instruction=system_prompt_text)
 
         chat = model.start_chat(history=history_api)
         response = chat.send_message(user_text)
         return response.text
         
     except Exception as e:
-        return f"エラー: {str(e)}"
+        return f"エラー: {str(e)}\n(モデル名が間違っているか、APIキーが対応していません)"
 
 # --- 5. アプリ画面構成 ---
 
@@ -184,17 +128,41 @@ with st.sidebar:
     
     st.divider()
     book_context = st.text_input("📚 本・技術名", value="Python基礎")
-    user_level = st.select_slider("📊 現在のレベル", options=["入門", "初級", "中級"], value="初級")
+    user_level = st.select_slider("📊 レベル", options=["入門", "初級", "中級"], value="初級")
     
     st.divider()
-    q_count = sum(1 for m in st.session_state.messages if m["role"] == "user")
-    st.write(f"🔥 今日の質問数: {q_count}問")
-    st.progress(min(q_count / 10, 1.0))
     
+    # ★モデル選択
+    st.write("🧠 AIモデル選択")
+    model_option = st.selectbox(
+        "使用するモデル",
+        (
+            "Gemini 1.5 Flash (高速・推奨)", 
+            "Gemini 1.5 Pro (高精度)", 
+            "Gemma 3 (27B)"
+        )
+    )
+    
+    # モデルIDの割り当て
+    if "Flash" in model_option:
+        current_model = "models/gemini-1.5-flash-latest"
+    elif "Pro" in model_option:
+        current_model = "models/gemini-1.5-pro-latest"
+    elif "Gemma" in model_option:
+        # ※もしGemma 3を使いたい場合は、ここのIDを書き換えてください
+        # 例: "models/gemma-3-27b-it" (APIで有効な場合のみ)
+        current_model = "models/gemma-3-27b-it"
+
+    # もし手動で試したい場合用（デバッグ）
+    use_custom = st.checkbox("モデルIDを手動入力する")
+    if use_custom:
+        current_model = st.text_input("モデルIDを入力", value=current_model)
+
+    st.caption(f"使用中ID: {current_model}")
+
     st.divider()
     if st.button("🗑️ 最初からやり直す", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.messages.append({"role": "assistant", "content": "リセットしました！"})
+        st.session_state.messages = [{"role": "assistant", "content": "リセットしました！"}]
         st.rerun()
 
 # メインエリア
@@ -203,111 +171,85 @@ tab1, tab2 = st.tabs(["💬 チャット学習", "📝 復習ノート"])
 
 # === チャットタブ ===
 with tab1:
-    # 履歴表示
     for msg in st.session_state.messages:
         role = msg["role"]
         content = msg["content"]
-        
         with st.chat_message(role, avatar="🧑‍💻" if role == "user" else "🤖"):
             if role == "assistant" and "///HIDDEN///" in content:
                 parts = content.split("///HIDDEN///")
-                st.markdown(parts[0]) # 解説と問題
+                st.markdown(parts[0])
                 with st.expander("👀 クリックして正解を見る"):
-                    st.markdown(parts[1]) # 答え
+                    st.markdown(parts[1])
             else:
                 st.markdown(content)
 
-    st.write("") # 余白
+    st.write("") 
 
-    # AI回答直後のアクション提案
+    # アクション提案
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-        st.caption("👇 次のアクションを選んでください")
+        st.caption("👇 次のアクション")
         col1, col2, col3 = st.columns(3)
-        
-        next_action = None
         if col1.button("🔍 もっと詳しく", use_container_width=True):
-            next_action = "今の説明を、もっと噛み砕いて、別の例えで教えてください。"
+            st.session_state["next_input"] = "今の説明を、もっと噛み砕いて、別の例えで教えてください。"
+            st.rerun()
         if col2.button("💻 コード例", use_container_width=True):
-            next_action = "それを実装する具体的なコード例を書いてください。"
+            st.session_state["next_input"] = "それを実装する具体的なコード例を書いてください。"
+            st.rerun()
         if col3.button("⚠️ 注意点は？", use_container_width=True):
-            next_action = "それを使う時の注意点や、初心者がやりがちなミスは？"
-            
-        if next_action:
-            st.session_state["next_input"] = next_action
+            st.session_state["next_input"] = "初心者がやりがちなミスは？"
             st.rerun()
 
-    # 入力処理
+    # 入力
     user_input = st.chat_input("ここに入力...")
-    
     if "next_input" in st.session_state:
         user_input = st.session_state.pop("next_input")
 
     if user_input:
         if not api_key:
-            st.error("サイドバーでAPIキーを設定してください")
+            st.error("APIキーを設定してください")
             st.stop()
-            
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.rerun()
 
-# メッセージ生成（最新がユーザーの場合）
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with tab1:
         with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("考え中..."):
+            with st.spinner("AIが思考中..."):
                 last_msg = st.session_state.messages[-1]["content"]
-                response_text = get_ai_response(last_msg, api_key, book_context, user_level)
+                response_text = get_ai_response(last_msg, api_key, book_context, user_level, current_model)
                 
-                # 表示と保存
                 if "///HIDDEN///" in response_text:
                     parts = response_text.split("///HIDDEN///")
                     st.markdown(parts[0])
                     with st.expander("👀 クリックして正解を見る"):
                         st.markdown(parts[1])
-                    
-                    log_q = last_msg
                     log_a = parts[0]
                     log_ans = parts[1]
                 else:
                     st.markdown(response_text)
-                    log_q = last_msg
                     log_a = response_text
                     log_ans = "（解説のみ）"
 
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
-                
                 st.session_state.study_log.append({
                     "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "q": log_q,
-                    "a": log_a,
-                    "ans": log_ans
+                    "q": last_msg, "a": log_a, "ans": log_ans
                 })
-                
                 st.rerun()
 
 # === 復習ノートタブ ===
 with tab2:
-    st.info("💡 学習した内容がカード形式で保存されます。")
-    
     if st.session_state.study_log:
         for log in reversed(st.session_state.study_log):
-            # Expander自体もCSSで白く強制されています
             with st.expander(f"Q. {log['q']}"):
                 st.caption(f"日時: {log['time']}")
-                
-                # 文字色もCSSで黒に強制されています
-                st.markdown("**【解説・問題】**")
+                st.markdown("**【解説】**")
                 st.markdown(log['a'])
-                
                 if log['ans'] != "（解説のみ）":
                     st.divider()
                     st.markdown("**【正解】**")
                     st.markdown(log['ans'])
-        
         st.divider()
         df = pd.DataFrame(st.session_state.study_log)
         csv = df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 復習データをCSVで保存", csv, "study_log.csv", "text/csv")
-    else:
-        st.write("まだ履歴がありません。")
-
+        st.download_button("📥 CSV保存", csv, "study_log.csv", "text/csv")
